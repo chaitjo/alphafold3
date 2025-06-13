@@ -659,3 +659,22 @@ Step through the configuration and execution.
 Inspect intermediate variables if you add print statements or debugging code.
 Choose whether to run the data pipeline, inference, or both.
 Context Sources (26)
+
+Chaitanya Joshi
+I got the following error when running the final cell (everything else worked; you are a champ!):
+
+TypeError Traceback (most recent call last) Cell In[12], line 173 170 # Determine the specific output directory for this job, inside the global output_dir_notebook 171 job_specific_output_dir = os.path.join(output_dir_notebook, f_input_to_process.sanitised_name()) --> 173 process_fold_input_notebook( 174 fold_input=f_input_to_process, 175 data_pipeline_config=data_pipeline_config_obj if run_data_pipeline_notebook else None, 176 model_runner=model_runner_obj if run_inference_notebook else None, 177 output_dir=job_specific_output_dir, 178 buckets=tuple(buckets_notebook) if buckets_notebook else None, 179 ref_max_modified_date=datetime.date.fromisoformat(max_template_date_notebook) if run_inference_notebook else None, 180 conformer_max_iterations=conformer_max_iterations_notebook if run_inference_notebook else None, 181 resolve_msa_overlaps=resolve_msa_overlaps_notebook if run_data_pipeline_notebook else True, 182 force_output_dir=force_output_dir_notebook, 183 ) 184 num_processed_fold_inputs += 1 185 else:
+
+Cell In[11], line 326 317 all_inference_results = predict_structure_notebook( 318 fold_input=processed_fold_input, # Use the processed input 319 model_runner=model_runner, (...) 323 resolve_msa_overlaps=resolve_msa_overlaps, 324 ) 325 print(f'Writing outputs for {len(processed_fold_input.rng_seeds)} seed(s)...') --> 326 write_outputs_notebook( 327 all_inference_results=all_inference_results, 328 output_dir=output_dir, 329 job_name=processed_fold_input.sanitised_name(), 330 ) 331 final_output = all_inference_results 333 print(f'Fold job {processed_fold_input.name} done, output written to {os.path.abspath(output_dir)}\n')
+
+TypeError: write_outputs_notebook() got an unexpected keyword argument 'all_inference_results'
+
+
+Gemini
+You're right, that's a mismatch in the keyword argument name!
+
+The write_outputs_notebook function expects the argument all_results_for_seeds, but it's being called with all_inference_results.
+
+Here's the correction in Cell 5, within the process_fold_input_notebook function:
+
+Change that line, and the rest of the notebook should work as intended. Good catch!

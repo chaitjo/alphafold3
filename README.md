@@ -1,3 +1,116 @@
+# Hackable AlphaFold 3 without Docker or MSAs!
+
+This is a lightweight, hackable way to run AlphaFold 3 that lets you experiment without the massive MSA databases or Docker overhead. 
+Perfect for tinkering on your laptop or single GPU server - just install, drop in your sequences, and start predicting. 
+No 100GB downloads, no container bloat, just pure structure prediction you can play with in a [Jupyter notebook](run_alphafold.ipynb).
+
+<img src="screenshot.png" width="600" alt="Screenshot">
+
+**Installation:**
+```sh
+# Create a conda environment and activate it
+mamba create -n alphafold3 python=3.11 -y
+mamba activate alphafold3
+
+# Install Jax 0.4.34
+pip install "jax[cuda12]==0.4.34" --no-cache-dir
+python -c "import jax; print(jax.devices())"
+
+# Install other dependencies
+pip install absl-py dm-haiku==0.0.13 dm-tree jaxtyping==0.2.34 numpy tqdm typeguard==2.13.3 zstandard
+pip install jax-triton==0.2.0 triton==3.1.0
+mamba install -c conda-forge rdkit=2024.3.5 -y
+mamba install -c salilab dssp
+
+# (Optional) Install jupyter
+# mamba install -c conda-forge jupyterlab
+
+# Install the alphafold3 package so that things can be imported directly
+pip install . --no-dependencies
+ 
+# Run script for building intermediate data (related to CCD ligands)
+build_data
+
+# Place the model checkpoint 'af3.bin.zst' under the models/ directory.
+```
+
+**Input preparation without MSA or manual MSA:**
+Create an example JSON file named `af_input/fold_input.json`
+```json
+{
+  "name": "2PV7",
+  "sequences": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "GMRESYANENQFGFKTINSDIHKIVIVGGYGKLGGLFARYLRASGYPISILDREDWAVAESILANADVVIVSVPINLTLETIERLKPYLTENMLLADLTSVKREPLAKMLEVHTGAVLGLHPMFGADIASMAKQVVVRCDGRFPERYEWLLEQIQIWGAKIYQTNATEHDHNMTYIQALRHFSTFANGLHLSKQPINLANLLALSSPIYRLELAMIGRLFAQDAELYADIIMDKSENLAVIETLKQTYDEALTFFENNDRQGFIDAFHKVRDWFGDYSEQFLKESRQLLQQANDLKQG",
+        "unpairedMsa": "",
+        "pairedMsa": "",
+        "templates": []
+      }
+    }
+  ],
+  "modelSeeds": [1],
+  "dialect": "alphafold3",
+  "version": 1
+}
+```
+
+**Usage:**
+```sh
+# Set Environment Variables of A100/H100
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false"
+export XLA_PYTHON_CLIENT_PREALLOCATE=true
+export XLA_CLIENT_MEM_FRACTION=0.95
+
+# For older GPUs (e.g., V100), XLA_FLAGS should be:
+# export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
+
+# Run with flash attention disabled ('xla' option)
+JAX_TRACEBACK_FILTERING=off python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline --flash_attention_implementation=xla
+```
+
+**Example output:**
+```
+I0613 16:52:06.766995 140297352041536 xla_bridge.py:895] Unable to initialize backend 'rocm': module 'jaxlib.xla_extension' has no attribute 'GpuAllocatorConfig'
+I0613 16:52:06.768188 140297352041536 xla_bridge.py:895] Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+
+Running AlphaFold 3. Please note that standard AlphaFold 3 model parameters are
+only available under terms of use provided at
+https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md.
+If you do not agree to these terms and are using AlphaFold 3 derived model
+parameters, cancel execution of AlphaFold 3 inference with CTRL-C, and do not
+use the model parameters.
+
+Found local devices: [CudaDevice(id=0)], using device 0: cuda:0
+Building model from scratch...
+Checking that model parameters can be loaded...
+2025-06-13 16:52:06.821430: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.2 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+Running fold job 2PV7...
+Output will be written in af_output/2pv7_20250613_165213 since af_output/2pv7 is non-empty.
+Skipping data pipeline...
+Writing model input JSON to af_output/2pv7_20250613_165213/2pv7_data.json
+Predicting 3D structure for 2PV7 with 1 seed(s)...
+Featurising data with 1 seed(s)...
+Featurising data with seed 1.
+I0613 16:52:21.158257 140297352041536 pipeline.py:173] processing 2PV7, random_seed=1
+I0613 16:52:21.184545 140297352041536 pipeline.py:266] Calculating bucket size for input with 298 tokens.
+I0613 16:52:21.184759 140297352041536 pipeline.py:272] Got bucket size 512 for input with 298 tokens, resulting in 214 padded tokens.
+Featurising data with seed 1 took 4.73 seconds.
+Featurising data with 1 seed(s) took 12.23 seconds.
+Running model inference and extracting output structure samples with 1 seed(s)...
+Running model inference with seed 1...
+Running model inference with seed 1 took 72.46 seconds.
+Extracting inference results with seed 1...
+Extracting 5 inference samples with seed 1 took 0.39 seconds.
+Running model inference and extracting output structures with 1 seed(s) took 72.86 seconds.
+Writing outputs with 1 seed(s)...
+Fold job 2PV7 done, output written to af_output/2pv7_20250613_165213
+
+Done running 1 fold jobs.
+```
+
 ![header](docs/header.jpg)
 
 # AlphaFold 3
@@ -82,6 +195,14 @@ control which parts AlphaFold 3 will run are:
     consuming and could be run on a machine without a GPU.
 *   `--run_inference` (defaults to `true`): whether to run the inference. This
     part requires a GPU.
+
+From the command line:
+```
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false"
+export XLA_PYTHON_CLIENT_PREALLOCATE=true
+export XLA_CLIENT_MEM_FRACTION=0.95
+python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+```
 
 ## AlphaFold 3 Input
 

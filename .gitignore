@@ -1,6 +1,7 @@
 # Custom
 af_input/
 af_output/
+af_output_notebook/
 models/
 
 # Byte-compiled / optimized / DLL files
