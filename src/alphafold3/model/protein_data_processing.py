@@ -13,6 +13,7 @@
 from alphafold3.constants import atom_types
 from alphafold3.constants import residue_names
 from alphafold3.constants import side_chains
+from alphafold3.constants import mmcif_names
 import numpy as np
 
 
@@ -124,3 +125,61 @@ def _make_aatype_dense_atom_to_atom37():
 
 
 PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37 = _make_aatype_dense_atom_to_atom37()
+
+
+def _make_nucleic_aatype_dense_atom_to_atom29(target_chain_poly_type: str):
+  """Create mapping from (aatype, dense_idx) to ATOM29_IDX for nucleic acids."""
+  # Initialize map with zeros. Shape: (NUM_RESTYPES_WITH_UNK_AND_GAP, NUM_DENSE)
+  restype_dense_atom_to_atom29 = np.zeros(
+      (NUM_RESTYPES_WITH_UNK_AND_GAP, NUM_DENSE), dtype=np.int32
+  )
+
+  # Create a reverse mapping from aatype_idx to the residue name string
+  # used in POLYMER_TYPES_ORDER_WITH_UNKNOWN_AND_GAP.
+  idx_to_resname_key = {
+      v: k
+      for k, v in residue_names.POLYMER_TYPES_ORDER_WITH_UNKNOWN_AND_GAP.items()
+  }
+
+  for restype_idx in range(NUM_RESTYPES_WITH_UNK_AND_GAP):
+    resname_key = idx_to_resname_key.get(restype_idx)
+    if resname_key is None:
+      # This case should ideally not be reached if idx_to_resname_key is complete.
+      continue
+
+    actual_resname_for_dense_atom_lookup = None
+    if target_chain_poly_type == mmcif_names.RNA_CHAIN:
+      if resname_key in residue_names.RNA_TYPES:  # 'A', 'G', 'C', 'U'
+        actual_resname_for_dense_atom_lookup = resname_key
+      elif resname_key == residue_names.UNK_NUCLEIC_ONE_LETTER:  # 'N'
+        # Map generic nucleic unknown to RNA unknown for DENSE_ATOM keys
+        actual_resname_for_dense_atom_lookup = residue_names.UNK_RNA # 'N'
+
+    elif target_chain_poly_type == mmcif_names.DNA_CHAIN:
+      if resname_key in residue_names.DNA_TYPES:  # 'DA', 'DG', 'DC', 'DT'
+        actual_resname_for_dense_atom_lookup = resname_key
+      elif resname_key == residue_names.UNK_NUCLEIC_ONE_LETTER:  # 'N'
+        # Map generic nucleic unknown to DNA unknown for DENSE_ATOM keys
+        actual_resname_for_dense_atom_lookup = residue_names.UNK_DNA # 'DN'
+
+    if actual_resname_for_dense_atom_lookup:
+      # Get the canonical list of atoms for this specific residue type.
+      # This list has <= NUM_DENSE (24) atoms.
+      canonical_atoms_for_res = list(
+          atom_types.DENSE_ATOM.get(actual_resname_for_dense_atom_lookup, [])
+      )
+      # Pad this list to NUM_DENSE with empty strings.
+      padded_atom_names = canonical_atoms_for_res + [''] * (
+          NUM_DENSE - len(canonical_atoms_for_res)
+      )
+      # Map these NUM_DENSE atom names to their indices in ATOM29_ORDER.
+      # If atom name is empty or not in ATOM29_ORDER, map to 0 (dummy index).
+      indices_in_atom29 = [
+          (atom_types.ATOM29_ORDER.get(name, 0) if name else 0)
+          for name in padded_atom_names
+      ]
+      restype_dense_atom_to_atom29[restype_idx] = indices_in_atom29
+  return restype_dense_atom_to_atom29
+
+RNA_AATYPE_DENSE_ATOM_TO_ATOM29 = _make_nucleic_aatype_dense_atom_to_atom29(mmcif_names.RNA_CHAIN)
+DNA_AATYPE_DENSE_ATOM_TO_ATOM29 = _make_nucleic_aatype_dense_atom_to_atom29(mmcif_names.DNA_CHAIN)

@@ -764,21 +764,24 @@ class Templates:
         if skip_chain:
           template_features = data3.empty_template_features(chain_num_tokens)
         else:
-          assert isinstance(chain, folding_input.ProteinChain)
+          if not isinstance(
+              chain, (folding_input.ProteinChain, folding_input.RNAChain)
+          ):
+            raise TypeError(
+                f"Chain {chain_id} has unexpected type {type(chain)} for"
+                " template processing."
+            )
 
           sorted_features = []
           for template in chain.templates:
             struc = structure.from_mmcif(
-                template.mmcif,
-                fix_mse_residues=True,
-                fix_arginines=True,
                 include_bonds=False,
                 include_water=False,
                 include_other=True,  # For non-standard polymer chains.
             )
             hit_features = templates.get_polymer_features(
                 chain=struc,
-                chain_poly_type=mmcif_names.PROTEIN_CHAIN,
+                chain_poly_type=chain_type,  # Changed from mmcif_names.PROTEIN_CHAIN
                 query_sequence_length=len(chain.sequence),
                 query_to_hit_mapping=dict(template.query_to_template_map),
             )

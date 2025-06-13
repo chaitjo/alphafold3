@@ -854,11 +854,11 @@ def get_polymer_features(
     raise ValueError(
         f'Template structure {chain.name} must be filtered to a single polymer'
         f' chain but got a structure with {num_polymer_chains} polymer chains.'
-    )
+    ) # yapf: disable
 
   auth_chain_id, label_chain_id = next(
       iter(chain.polymer_auth_asym_id_to_label_asym_id().items())
-  )
+  ) # yapf: disable
   chain_sequence = chain.chain_single_letter_sequence()[label_chain_id]
 
   polymer = _POLYMERS[chain_poly_type]

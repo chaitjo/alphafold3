@@ -423,7 +423,12 @@ class ProteinChain:
 class RnaChain:
   """RNA chain input."""
 
-  __slots__ = ('_id', '_sequence', '_modifications', '_unpaired_msa')
+  __slots__ = (
+      '_id',
+      '_sequence',
+      '_modifications',
+      '_unpaired_msa',
+      '_templates')
 
   def __init__(
       self,
@@ -432,6 +437,7 @@ class RnaChain:
       sequence: str,
       modifications: Sequence[tuple[str, int]],
       unpaired_msa: str | None = None,
+      templates: Sequence[Template] | None = None,
   ):
     """Initializes a single strand RNA chain input.
 
@@ -444,6 +450,9 @@ class RnaChain:
         deduplicated and used to compute unpaired features. If None, this field
         is unset and must be filled in by the data pipeline before
         featurisation. If set to an empty string, it will be treated as a custom
+        MSA with no sequences.
+      templates: A list of structural templates for this chain. If None, this
+        field is unset and must be filled in by the data pipeline before
         MSA with no sequences.
     """
     if not all(res.isalpha() for res in sequence):
@@ -460,6 +469,7 @@ class RnaChain:
     # Use hashable container for modifications.
     self._modifications = tuple(modifications)
     self._unpaired_msa = unpaired_msa
+    self._templates = tuple(templates) if templates is not None else None
 
   @property
   def id(self) -> str:
@@ -484,6 +494,10 @@ class RnaChain:
   def unpaired_msa(self) -> str | None:
     return self._unpaired_msa
 
+  @property
+  def templates(self) -> Sequence[Template] | None:
+    return self._templates
+
   def __len__(self) -> int:
     return len(self._sequence)
 
@@ -493,16 +507,23 @@ class RnaChain:
         and self._sequence == other._sequence
         and self._modifications == other._modifications
         and self._unpaired_msa == other._unpaired_msa
+        and self._templates == other._templates
     )
 
   def __hash__(self) -> int:
     return hash(
-        (self._id, self._sequence, self._modifications, self._unpaired_msa)
+        (
+            self._id,
+            self._sequence,
+            self._modifications,
+            self._unpaired_msa,
+            self._templates,
+        )
     )
 
   def hash_without_id(self) -> int:
     """Returns a hash ignoring the ID - useful for deduplication."""
-    return hash((self._sequence, self._modifications, self._unpaired_msa))
+    return hash((self._sequence, self._modifications, self._unpaired_msa, self._templates))
 
   @classmethod
   def from_alphafoldserver_dict(
@@ -528,7 +549,14 @@ class RnaChain:
     json_dict = json_dict['rna']
     _validate_keys(
         json_dict.keys(),
-        {'id', 'sequence', 'unpairedMsa', 'unpairedMsaPath', 'modifications'},
+        {
+          'id',
+          'sequence',
+          'unpairedMsa',
+          'unpairedMsaPath',
+          'modifications',
+          'templates'
+        },
     )
     sequence = json_dict['sequence']
     modifications = [
@@ -551,17 +579,51 @@ class RnaChain:
     elif unpaired_msa_path:
       unpaired_msa = _read_file(pathlib.Path(unpaired_msa_path), json_path)
 
+    raw_templates = json_dict.get('templates', None)
+    if raw_templates is None:
+      templates = None
+    else:
+      templates = []
+      for raw_template in raw_templates:
+        mmcif = raw_template.get('mmcif', None)
+        mmcif_path = raw_template.get('mmcifPath', None)
+        if mmcif and mmcif_path:
+          raise ValueError('Only one of mmcif/mmcifPath can be set.')
+        if mmcif and len(mmcif) < 256 and os.path.exists(mmcif):
+          raise ValueError('Set the template path using the "mmcifPath" field.')
+        if mmcif_path:
+          mmcif = _read_file(pathlib.Path(mmcif_path), json_path)
+        query_to_template_map = dict(
+            zip(raw_template['queryIndices'], raw_template['templateIndices'])
+        )
+        templates.append(
+            Template(mmcif=mmcif, query_to_template_map=query_to_template_map)
+        )
     return cls(
         id=seq_id or json_dict['id'],
         sequence=sequence,
         modifications=modifications,
         unpaired_msa=unpaired_msa,
+        templates=templates,
     )
 
   def to_dict(
       self, seq_id: str | Sequence[str] | None = None
   ) -> Mapping[str, Mapping[str, Any]]:
     """Converts RnaChain to an AlphaFold JSON dict."""
+    if self._templates is None:
+      templates = None
+    else:
+      templates = [
+          {
+              'mmcif': template.mmcif,
+              'queryIndices': list(template.query_to_template_map.keys()),
+              'templateIndices': (
+                  list(template.query_to_template_map.values()) or None
+              ),
+          }
+          for template in self._templates
+      ]
     contents = {
         'id': seq_id or self._id,
         'sequence': self._sequence,
@@ -570,6 +632,7 @@ class RnaChain:
             for mod in self._modifications
         ],
         'unpairedMsa': self._unpaired_msa,
+        'templates': templates,
     }
     return {'rna': contents}
 
@@ -590,6 +653,7 @@ class RnaChain:
         sequence=self.sequence,
         modifications=self.modifications,
         unpaired_msa=self._unpaired_msa or '',
+        templates=self._templates or [],
     )
 
 

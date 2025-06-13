@@ -13,6 +13,7 @@
 from collections.abc import Mapping
 import datetime
 from typing import TypeAlias
+from alphafold3.constants import mmcif_names
 
 from alphafold3.constants import residue_names
 from alphafold3.cpp import msa_profile
@@ -39,13 +40,15 @@ def get_profile_features(
 
 
 def fix_template_features(
-    template_features: FeatureDict, num_res: int
+    template_features: FeatureDict, num_res: int, chain_poly_type: str
 ) -> FeatureDict:
   """Convert template features to AlphaFold 3 format.
 
   Args:
     template_features: Template features for the protein.
     num_res: The length of the amino acid sequence of the protein.
+    chain_poly_type: The polymer type of the chain (e.g.,
+      mmcif_names.PROTEIN_CHAIN, mmcif_names.RNA_CHAIN).
 
   Returns:
     Updated template_features for the chain.
@@ -58,9 +61,23 @@ def fix_template_features(
         for x in template_features['template_release_date']
     ]
 
-    # Convert from atom37 to dense atom
+    # Select the correct mapping from aatype and dense atom index to native atom index.
+    # This assumes that protein_data_processing.py will be updated to provide
+    # RNA_AATYPE_DENSE_ATOM_TO_ATOM29 and DNA_AATYPE_DENSE_ATOM_TO_ATOM29,
+    # which would be arrays similar to PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37
+    # but containing indices valid for ATOM29 ordering for RNA/DNA residues.
+    if chain_poly_type == mmcif_names.PROTEIN_CHAIN:
+      aatype_to_dense_atom_map = protein_data_processing.PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37
+    elif chain_poly_type == mmcif_names.RNA_CHAIN:
+      # Placeholder: This map needs to be defined in protein_data_processing.py
+      aatype_to_dense_atom_map = getattr(protein_data_processing, 'RNA_AATYPE_DENSE_ATOM_TO_ATOM29', protein_data_processing.PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37) # Fallback for now
+    elif chain_poly_type == mmcif_names.DNA_CHAIN:
+      # Placeholder: This map needs to be defined in protein_data_processing.py
+      aatype_to_dense_atom_map = getattr(protein_data_processing, 'DNA_AATYPE_DENSE_ATOM_TO_ATOM29', protein_data_processing.PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37) # Fallback for now
+    else:
+      raise ValueError(f"Unsupported chain_poly_type for template fixing: {chain_poly_type}")
     dense_atom_indices = np.take(
-        protein_data_processing.PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37,
+        aatype_to_dense_atom_map,
         template_features['template_aatype'],
         axis=0,
     )
