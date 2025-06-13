@@ -1,0 +1,661 @@
+Chaitanya Joshi
+This is the codebase for AlphaFold3. Its installation instructions mainly mention that I need to install and use it with Docker. However, I do not want to use Docker and want to directly install all the requirements in a new conda environment. Can you create instructions to do so based on the README.md, requirements.txt, and all the other necessary documentation you need to reference?
+
+
+Gemini
+Okay, I can help you outline the steps to install AlphaFold3 in a Conda environment. Please note that the official installation method uses Docker, and these instructions are an alternative approach. You might need to adjust package versions or resolve dependencies based on your specific system and the latest package availability.
+
+Disclaimer: These instructions are based on the provided documentation. The official and recommended way to install AlphaFold 3 is using Docker. This Conda-based setup is not officially supported and may require additional troubleshooting.
+
+Prerequisites:
+
+Linux OS: AlphaFold 3 requires a Linux environment.
+NVIDIA GPU: Compute Capability 8.0 or greater.
+NVIDIA Drivers: Ensure you have appropriate NVIDIA drivers installed.
+Conda: Anaconda or Miniconda installed.
+System RAM: At least 64 GB RAM is recommended, especially for the genetic search stage.
+Disk Space: Up to 1 TB for genetic databases (SSD recommended).
+Installation Steps:
+
+Install System Dependencies for Database Download & MSA Tools: These are needed for the fetch_databases.sh script and the data pipeline.
+
+bash
+sudo apt-get update
+sudo apt-get install -y wget zstd hmmer
+# DSSP might be needed for feature generation. Conda is a good source.
+# Kalign is another common MSA tool, though not explicitly listed as required by AF3 docs for conda.
+# sudo apt-get install -y kalign # If you find it's needed
+Install CUDA Toolkit: AlphaFold 3's Docker setup implies CUDA 12.x. Install a version compatible with the JAX release you'll use (e.g., CUDA 12.1 or 12.4). Follow NVIDIA's official instructions for your Linux distribution. Verify with nvcc --version.
+
+Create and Activate Conda Environment:
+
+bash
+conda create -n alphafold3 python=3.10 -y
+conda activate alphafold3
+Install JAX with CUDA Support: Refer to the official JAX installation guide for the most up-to-date command. For a CUDA 12.x installation, it's typically:
+
+bash
+pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+Verify JAX can see the GPU: python -c "import jax; print(jax.devices())"
+
+Install Python Dependencies:
+
+bash
+pip install -U pip
+pip install dm-haiku jaxtyping dm-tree tqdm numpy absl-py pybind11
+# RDKit is best installed via Conda
+conda install -c conda-forge rdkit -y
+# For jax-triton (optional if XLA_FLAGS disables triton_gemm, but listed in acknowledgements)
+pip install jax-triton
+# For DSSP, if not installed via apt or if a Python library is directly used
+conda install -c salilab dssp -y # This usually provides the mkdssp executable
+libcifpp is listed in acknowledgements. If run_alphafold.py or its Python dependencies require specific bindings not covered by common mmCIF parsers (like pdbx), you might need to find a suitable Python package or compile it. Often, mmCIF parsing is handled by libraries like Gemmi or Biopython's PDB/MMCIF parser, which might be pulled in as sub-dependencies. For now, we assume standard Python libraries will cover mmCIF handling.
+Clone AlphaFold 3 Repository:
+
+bash
+git clone https://github.com/google-deepmind/alphafold3.git
+cd alphafold3
+Obtain Genetic Databases: Follow the instructions in docs/installation.md:
+
+bash
+./fetch_databases.sh [<DB_DIR>]
+Remember the notes about <DB_DIR> not being a subdirectory of the repository and permissions.
+
+Obtain Model Parameters: Request access and download as described in docs/installation.md or the README.md. Place them in a <MODEL_PARAMETERS_DIR>. This directory should also not be a subdirectory of the AlphaFold 3 repository.
+
+Set Environment Variables: These are recommended for performance and memory management on A100/H100 80GB GPUs. Adjust per docs/performance.md if using other hardware.
+
+bash
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false"
+export XLA_PYTHON_CLIENT_PREALLOCATE=true
+export XLA_CLIENT_MEM_FRACTION=0.95
+For CUDA Capability 7.x GPUs (e.g., V100), XLA_FLAGS should be:
+
+bash
+export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
+Run AlphaFold 3: Navigate to the alphafold3 repository directory if you aren't already there. Create your input JSON (e.g., $HOME/af_input/fold_input.json) and an output directory (e.g., $HOME/af_output).
+
+bash
+python run_alphafold.py \
+    --json_path=$HOME/af_input/fold_input.json \
+    --model_dir=<MODEL_PARAMETERS_DIR> \
+    --output_dir=$HOME/af_output \
+    --db_dir=<DB_DIR>
+    # Add other flags as needed, e.g.:
+    # --run_data_pipeline=true (default)
+    # --run_inference=true (default)
+    # --norun_data_pipeline (to skip MSA/template search if already done or providing custom)
+    # --jax_compilation_cache_dir=<YOUR_JAX_CACHE_DIR>
+Replace <MODEL_PARAMETERS_DIR> and <DB_DIR> with the actual paths you used.
+
+This Conda-based setup requires careful management of dependencies. If you encounter issues, comparing with the official Dockerfile (if you can access its contents, e.g., from a Docker Hub image or by inspecting the build process) would be the best way to identify exact versions and additional system packages.
+
+Context Sources (12)
+
+
+Chaitanya Joshi
+Why did you recommend using python 3.10?
+
+
+Gemini
+I recommended Python 3.10 primarily because:
+
+Alignment with Documentation: The docs/installation.md file mentions using Ubuntu 22.04 LTS as a base for their setup. Python 3.10 is the default Python 3 version shipped with Ubuntu 22.04. Using this version helps align a Conda setup more closely with the environment implicitly suggested by the official documentation.
+Broad Compatibility and Stability: Python 3.10 is a mature and stable version that enjoys wide support across the scientific Python ecosystem, including libraries like JAX, NumPy, Haiku, and RDKit, which are central to AlphaFold 3.
+While the provided requirements.txt.new mentions it was autogenerated with Python 3.11 (which means Python 3.11 would also be a perfectly suitable and tested choice), Python 3.10 remains a robust and widely adopted option for such complex scientific software.
+
+Context Sources (6)
+
+Chaitanya Joshi
+The pyproject says: requires-python = ">=3.11" -- this means that its likely there will be issues using 3.10, right? Can you adjust the instructions based on the pyproject file?
+
+Selected text
+: 1 lines selected
+
+Gemini
+You are absolutely right! My apologies. The pyproject.toml file clearly states requires-python = ">=3.11". This means Python 3.11 or newer is the intended version, and using Python 3.10 could indeed lead to compatibility issues with the package itself or its dependencies as specified.
+
+Thank you for catching that! Let's adjust the Conda installation instructions accordingly.
+
+Revised Conda Installation Steps (with Python 3.11):
+
+Install System Dependencies for Database Download & MSA Tools: (This step remains the same)
+
+bash
+sudo apt-get update
+sudo apt-get install -y wget zstd hmmer
+# DSSP might be needed for feature generation. Conda is a good source.
+# Kalign is another common MSA tool, though not explicitly listed as required by AF3 docs for conda.
+# sudo apt-get install -y kalign # If you find it's needed
+Install CUDA Toolkit: (This step remains the same - ensure compatibility with JAX and your GPU) AlphaFold 3's Docker setup implies CUDA 12.x. The pyproject.toml lists jax[cuda12]==0.4.34. Install a version compatible with this, e.g., CUDA 12.1 or 12.4. Follow NVIDIA's official instructions. Verify with nvcc --version.
+
+Create and Activate Conda Environment (Updated):
+
+bash
+conda create -n alphafold3 python=3.11 -y
+conda activate alphafold3
+Install JAX with CUDA Support: (This step remains largely the same, but ensure it aligns with Python 3.11 and CUDA 12.x) Refer to the official JAX installation guide. For Python 3.11 and CUDA 12.x, it's typically:
+
+bash
+pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+The pyproject.toml specifies jax[cuda12]==0.4.34. You can be more specific:
+
+bash
+pip install "jax[cuda12_pip]==0.4.34" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+Verify JAX can see the GPU: python -c "import jax; print(jax.devices())"
+
+Install Python Dependencies (Updated based on pyproject.toml):
+
+bash
+pip install -U pip
+# Install dependencies as listed in pyproject.toml
+pip install absl-py dm-haiku==0.0.13 dm-tree jaxtyping==0.2.34 numpy tqdm typeguard==2.13.3 zstandard
+pip install jax-triton==0.2.0 triton==3.1.0 # These are also in pyproject.toml
+
+# RDKit is best installed via Conda, try to match version if possible or get latest compatible
+conda install -c conda-forge rdkit=2024.3.5 -y # Matching pyproject.toml version
+
+# For DSSP, if not installed via apt or if a Python library is directly used
+conda install -c salilab dssp -y # This usually provides the mkdssp executable
+libcifpp is listed in acknowledgements. As before, we assume standard Python libraries (like those pulled in by RDKit or other dependencies) will cover mmCIF handling. If specific libcifpp Python bindings are strictly required and not covered, this would be a more complex step involving potential compilation.
+Clone AlphaFold 3 Repository: (This step remains the same)
+
+bash
+git clone https://github.com/google-deepmind/alphafold3.git
+cd alphafold3
+Obtain Genetic Databases: (This step remains the same)
+
+bash
+./fetch_databases.sh [<DB_DIR>]
+Obtain Model Parameters: (This step remains the same) Request access and download as described. Place them in a <MODEL_PARAMETERS_DIR>.
+
+Set Environment Variables: (This step remains the same)
+
+bash
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false" # As per performance.md for A100/H100
+export XLA_PYTHON_CLIENT_PREALLOCATE=true
+export XLA_CLIENT_MEM_FRACTION=0.95
+For CUDA Capability 7.x GPUs (e.g., V100), XLA_FLAGS should be:
+
+bash
+export XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"
+Run AlphaFold 3: (This step remains the same) Navigate to the alphafold3 repository directory. Create your input JSON and an output directory.
+
+bash
+python run_alphafold.py \
+    --json_path=$HOME/af_input/fold_input.json \
+    --model_dir=<MODEL_PARAMETERS_DIR> \
+    --output_dir=$HOME/af_output \
+    --db_dir=<DB_DIR>
+    # Add other flags as needed
+The key change is using python=3.11 during Conda environment creation and ensuring the pip install commands fetch versions compatible with Python 3.11, ideally matching those in pyproject.toml. Using the specific versions from pyproject.toml for pip install is generally a good practice for reproducibility.
+
+Context Sources (6)
+
+Chaitanya Joshi
+What if I used this command: python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+
+
+Gemini
+If you use the command:
+
+bash
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false"
+export XLA_PYTHON_CLIENT_PREALLOCATE=true
+export XLA_CLIENT_MEM_FRACTION=0.95
+python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+Here's what will happen:
+
+Environment Variables Set:
+
+XLA_FLAGS="--xla_gpu_enable_triton_gemm=false": This flag is typically set to work around an XLA issue that can increase JAX compilation time on certain GPUs (like A100/H100). It disables Triton-based GEMM kernels.
+XLA_PYTHON_CLIENT_PREALLOCATE=true: This preallocates GPU memory for JAX.
+XLA_CLIENT_MEM_FRACTION=0.95: This tells JAX to preallocate 95% of the available GPU memory. These are generally recommended for running inference on A100/H100 80GB GPUs to manage memory effectively, as per docs/performance.md.
+run_alphafold.py Execution:
+
+--json_path=af_input/fold_input.json: The script will read its primary input from the fold_input.json file located in the af_input/ directory.
+--model_dir=models/: It will load the AlphaFold 3 model parameters from the models/ directory.
+--output_dir=af_output/: All prediction outputs will be saved into the af_output/ directory.
+--norun_data_pipeline: This is a key flag.
+It tells the script to skip the data pipeline stage. This means AlphaFold 3 will not perform Multiple Sequence Alignment (MSA) searches (e.g., with Jackhmmer, Nhmmer) or template searches.
+Consequently, the script will expect the input JSON file (af_input/fold_input.json) to already contain pre-computed MSAs and templates. If these are missing or not in the correct format, the subsequent featurisation or inference steps will likely fail or produce incorrect results.
+Since --run_inference is not specified, it defaults to true. Therefore, the script will proceed with the featurisation and model inference stages using the (presumably pre-computed) features from the input JSON and the model parameters. This stage requires a GPU.
+In summary, this command is intended for scenarios where you have already run the data pipeline (MSA and template search) and have an augmented JSON file containing these features. You are now running only the inference part of AlphaFold 3, leveraging specific XLA flags for performance and memory management on the GPU.
+
+Context Sources (14)
+
+Chaitanya Joshi
+I ran the command and got: python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline Traceback (most recent call last): File "/home/ckj24/alphafold3/run_alphafold.py", line 39, in <module> from alphafold3.common import folding_input ModuleNotFoundError: No module named 'alphafold3'
+
+
+Gemini
+It looks like Python isn't able to find the alphafold3 package. This ModuleNotFoundError typically occurs when the directory containing the package is not in Python's search path (sys.path).
+
+Here's how you can address this, assuming your AlphaFold3 repository is cloned at /home/ckj24/alphafold3/ and has the standard structure where run_alphafold.py and the alphafold3 package directory are at this root:
+
+plaintext
+/home/ckj24/alphafold3/
+├── run_alphafold.py
+├── alphafold3/         # This is the Python package
+│   ├── __init__.py
+│   ├── common/
+│   └── ...
+├── af_input/
+├── models/
+└── ...
+Ensure you are running the script from the repository root: The command python run_alphafold.py --json_path=af_input/fold_input.json ... uses relative paths, which suggests you are likely already in the repository root (/home/ckj24/alphafold3/). If you are, Python should automatically add this directory to its search path, and the alphafold3 package within it should be discoverable.
+
+If you're not already there, navigate to it:
+
+bash
+cd /home/ckj24/alphafold3
+Then try running your command again.
+
+Set the PYTHONPATH environment variable: This explicitly tells Python where to look for modules. Set PYTHONPATH to the root of your AlphaFold3 repository.
+
+bash
+export PYTHONPATH="/home/ckj24/alphafold3:$PYTHONPATH"
+After setting this, try your command again:
+
+bash
+python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+To make this permanent for your current shell session or by adding it to your shell's configuration file (e.g., ~/.bashrc or ~/.zshrc), then sourcing it.
+
+Verify package structure: Ensure that the alphafold3 package directory exists at /home/ckj24/alphafold3/alphafold3/ and that it contains an __init__.py file. This file is necessary for Python to recognize the directory as a package. The same applies to sub-packages like common.
+
+Usually, running the script from the project root (point 1) is sufficient if the project is structured correctly. Setting PYTHONPATH (point 2) is a more explicit way to ensure the package is found.
+
+Context Sources (7)
+
+Chaitanya Joshi
+Actually, the directory structure is something like /home/ckj24/alphafold3/ --> src/ --> alphafold3/ --> this directory houses all the source code.
+
+
+Gemini
+You're right! If the alphafold3 package directory is located at /home/ckj24/alphafold3/src/alphafold3/, then my previous PYTHONPATH suggestion needs adjustment.
+
+Given this structure:
+
+plaintext
+/home/ckj24/alphafold3/
+├── run_alphafold.py
+└── src/
+    └── alphafold3/         # This is the Python package
+        ├── __init__.py
+        ├── common/
+        └── ...
+When you execute python run_alphafold.py from the /home/ckj24/alphafold3/ directory, Python needs to be able to find the alphafold3 package. The directory containing this package is /home/ckj24/alphafold3/src/.
+
+Here are the corrected ways to resolve the ModuleNotFoundError:
+
+Set the PYTHONPATH environment variable correctly: You need to add the src directory to your PYTHONPATH.
+
+bash
+cd /home/ckj24/alphafold3
+export PYTHONPATH="/home/ckj24/alphafold3/src:$PYTHONPATH"
+After setting this, try your command again:
+
+bash
+python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+This tells Python to look inside the /home/ckj24/alphafold3/src directory for packages, where it will find the alphafold3 package.
+
+Install the package into your Conda environment (Recommended for a more robust setup): If you plan to use AlphaFold3 regularly, installing it into your Conda environment is a cleaner approach. Navigate to the root of the repository and use pip:
+
+bash
+cd /home/ckj24/alphafold3
+pip install .
+This will build and install the alphafold3 package (from the src directory, as is standard for projects with a pyproject.toml and a src layout) into your active Conda environment's site-packages. Once installed, you should be able to run run_alphafold.py from its location without needing to set PYTHONPATH, as Python will automatically find the installed package.
+
+For simply making your current command work without altering the Conda environment further by installation, adjusting the PYTHONPATH as shown in option 1 is the most direct solution.
+
+Context Sources (12)
+
+Chaitanya Joshi
+I tried to see what would happen when I do: $ pip install . --dry-run
+
+I got:
+
+Processing /home/ckj24/alphafold3 Installing build dependencies ... done Getting requirements to build wheel ... done Preparing metadata (pyproject.toml) ... done Requirement already satisfied: absl-py in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (2.3.0) Requirement already satisfied: dm-haiku==0.0.13 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (0.0.13) Requirement already satisfied: dm-tree in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (0.1.9) Collecting jax==0.4.34 (from alphafold3==3.0.1) Downloading jax-0.4.34-py3-none-any.whl.metadata (22 kB) Requirement already satisfied: jax-triton==0.2.0 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (0.2.0) Requirement already satisfied: jaxtyping==0.2.34 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (0.2.34) Requirement already satisfied: numpy in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (2.3.0) Requirement already satisfied: rdkit==2024.3.5 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (2024.3.5) Requirement already satisfied: triton==3.1.0 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (3.1.0) Requirement already satisfied: tqdm in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (4.67.1) Requirement already satisfied: typeguard==2.13.3 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (2.13.3) Requirement already satisfied: zstandard in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from alphafold3==3.0.1) (0.23.0) Requirement already satisfied: jmp>=0.0.2 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from dm-haiku==0.0.13->alphafold3==3.0.1) (0.0.4) Requirement already satisfied: tabulate>=0.8.9 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from dm-haiku==0.0.13->alphafold3==3.0.1) (0.9.0) Collecting jaxlib<=0.4.34,>=0.4.34 (from jax==0.4.34->alphafold3==3.0.1) Downloading jaxlib-0.4.34-cp311-cp311-manylinux2014_x86_64.whl.metadata (983 bytes) Requirement already satisfied: ml-dtypes>=0.2.0 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax==0.4.34->alphafold3==3.0.1) (0.5.1) Requirement already satisfied: opt-einsum in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax==0.4.34->alphafold3==3.0.1) (3.4.0) Requirement already satisfied: scipy>=1.10 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax==0.4.34->alphafold3==3.0.1) (1.15.3) Collecting jax-cuda12-plugin<=0.4.34,>=0.4.34 (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) Downloading jax_cuda12_plugin-0.4.34-cp311-cp311-manylinux2014_x86_64.whl.metadata (1.2 kB) Requirement already satisfied: filelock in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from triton==3.1.0->alphafold3==3.0.1) (3.18.0) Collecting jax-cuda12-pjrt==0.4.34 (from jax-cuda12-plugin<=0.4.34,>=0.4.34->jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) Downloading jax_cuda12_pjrt-0.4.34-py3-none-manylinux2014_x86_64.whl.metadata (349 bytes) Requirement already satisfied: nvidia-cublas-cu12>=12.1.3.1 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (12.8.4.1) Requirement already satisfied: nvidia-cuda-cupti-cu12>=12.1.105 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (12.9.79) Requirement already satisfied: nvidia-cuda-nvcc-cu12>=12.1.105 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (12.9.86) Requirement already satisfied: nvidia-cuda-runtime-cu12>=12.1.105 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (12.9.79) Requirement already satisfied: nvidia-cudnn-cu12<10.0,>=9.1 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (9.10.2.21) Requirement already satisfied: nvidia-cufft-cu12>=11.0.2.54 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (11.4.1.4) Requirement already satisfied: nvidia-cusolver-cu12>=11.4.5.107 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (11.7.5.82) Requirement already satisfied: nvidia-cusparse-cu12>=12.1.0.106 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (12.5.10.65) Requirement already satisfied: nvidia-nccl-cu12>=2.18.1 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (2.27.3) Requirement already satisfied: nvidia-nvjitlink-cu12>=12.1.105 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from jax-cuda12-plugin[with_cuda]<=0.4.34,>=0.4.34; extra == "cuda12"->jax[cuda12]==0.4.34->alphafold3==3.0.1) (12.9.86) Requirement already satisfied: attrs>=18.2.0 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from dm-tree->alphafold3==3.0.1) (25.3.0) Requirement already satisfied: wrapt>=1.11.2 in /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages (from dm-tree->alphafold3==3.0.1) (1.17.2) Downloading jax-0.4.34-py3-none-any.whl (2.1 MB) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 42.3 MB/s eta 0:00:00 Downloading jaxlib-0.4.34-cp311-cp311-manylinux2014_x86_64.whl (86.1 MB) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 86.1/86.1 MB 141.7 MB/s eta 0:00:00 Downloading jax_cuda12_plugin-0.4.34-cp311-cp311-manylinux2014_x86_64.whl (14.9 MB) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 14.9/14.9 MB 21.4 MB/s eta 0:00:00 Downloading jax_cuda12_pjrt-0.4.34-py3-none-manylinux2014_x86_64.whl (100.3 MB) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100.3/100.3 MB 30.1 MB/s eta 0:00:00 Would install alphafold3-3.0.1 jax-0.4.34 jax-cuda12-pjrt-0.4.34 jax-cuda12-plugin-0.4.34 jaxlib-0.4.34
+
+However, I believe I have already installed jax and its actually at a higher version: (alphafold3) ckj24@dev-gpu-ckj24:~/alphafold3$ pip list | grep "jax" jax 0.6.1 jax-cuda12-pjrt 0.6.1 jax-cuda12-plugin 0.6.1 jax-triton 0.2.0 jaxlib 0.6.1 jaxtyping 0.2.34
+
+What should I do?
+
+
+Gemini
+You've correctly observed that pip install . --dry-run indicates it wants to install jax==0.4.34 and its corresponding jaxlib and CUDA plugin versions. This would indeed downgrade your currently installed JAX 0.6.1 packages.
+
+This is the expected and correct behavior in this situation. Here's why and what you should do:
+
+AlphaFold3's Dependency Specification: The pyproject.toml file for AlphaFold3 explicitly defines its dependency on JAX as version 0.4.34:
+
+toml
+dependencies = [
+    # ...
+    "jax==0.4.34",
+    "jax[cuda12]==0.4.34",
+    # ...
+]
+This means AlphaFold3 is designed and tested to work specifically with jax==0.4.34.
+
+Pip's Role: When you run pip install ., pip reads these dependencies and tries to make your environment match them. Since your environment has jax 0.6.1 and AlphaFold3 requires jax 0.4.34, pip plans to:
+
+Uninstall jax 0.6.1, jaxlib 0.6.1, jax-cuda12-pjrt 0.6.1, and jax-cuda12-plugin 0.6.1.
+Install jax 0.4.34, jaxlib 0.4.34, jax-cuda12-pjrt 0.4.34, and jax-cuda12-plugin 0.4.34.
+What you should do:
+
+You should allow pip to manage these dependencies by running the installation command without the --dry-run flag:
+
+bash
+pip install .
+This will perform the downgrade of JAX to version 0.4.34. This is the recommended approach to ensure that AlphaFold3 runs in an environment consistent with its development and testing, minimizing potential compatibility issues.
+
+Since you created a new Conda environment specifically for AlphaFold3 (as per the earlier instructions), this downgrade should not affect other projects, assuming they reside in different environments. Using dedicated environments for projects with specific or potentially conflicting dependencies is a best practice.
+
+Context Sources (9)
+
+Chaitanya Joshi
+Okay I did that, and now get:
+
+$ python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline Traceback (most recent call last): File "/home/ckj24/alphafold3/run_alphafold.py", line 39, in <module> from alphafold3.common import folding_input File "/home/ckj24/alphafold3/src/alphafold3/common/folding_input.py", line 26, in <module> from alphafold3 import structure File "/home/ckj24/alphafold3/src/alphafold3/structure/init.py", line 14, in <module> from alphafold3.structure.bioassemblies import BioassemblyData File "/home/ckj24/alphafold3/src/alphafold3/structure/bioassemblies.py", line 18, in <module> from alphafold3.structure import mmcif File "/home/ckj24/alphafold3/src/alphafold3/structure/mmcif.py", line 24, in <module> from alphafold3.constants import chemical_components File "/home/ckj24/alphafold3/src/alphafold3/constants/chemical_components.py", line 20, in <module> from alphafold3.cpp import cif_dict ModuleNotFoundError: No module named 'alphafold3.cpp'
+
+
+Gemini
+It seems like Python is still having trouble locating the compiled C++ extensions for AlphaFold3, specifically the alphafold3.cpp module. This usually happens if the compiled shared object file (.so) isn't in a place Python expects, or if there was an issue during the pip install . process.
+
+Here are a few things to check and try:
+
+Unset PYTHONPATH (if previously set for the source directory): You previously set PYTHONPATH to include /home/ckj24/alphafold3/src to run the code directly from the source. After successfully running pip install ., the alphafold3 package is now installed in your Conda environment's site-packages. The PYTHONPATH pointing to the local source directory might now be causing Python to look at the uncompiled source instead of the installed package.
+
+Try unsetting it or ensuring it doesn't point to your local AlphaFold3 source:
+
+bash
+unset PYTHONPATH
+# Or, if you need PYTHONPATH for other things, ensure /home/ckj24/alphafold3/src is not in it.
+# echo $PYTHONPATH # to check its current value
+Then, try running your command again from the /home/ckj24/alphafold3/ directory:
+
+bash
+python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+Verify the compiled C++ extension: If unsetting PYTHONPATH doesn't resolve it, let's check if the C++ module was correctly compiled and placed into your Conda environment by pip install .. The compiled file should be something like cpp.cpython-311-x86_64-linux-gnu.so (the exact name might vary slightly based on your system specifics). It should be located inside the alphafold3 package directory within your Conda environment's site-packages.
+
+You can find your Conda environment's site-packages path and check for the file:
+
+bash
+# First, find the site-packages directory for your alphafold3 environment
+python -c "import site; print(site.getsitepackages())"
+This will print a list of paths. Look for the one related to your alphafold3 environment (e.g., /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages). Let's say this path is <SITE_PACKAGES_PATH>.
+
+Then, check for the compiled module:
+
+bash
+ls -l <SITE_PACKAGES_PATH>/alphafold3/cpp.*.so
+For example:
+
+bash
+ls -l /home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/alphafold3/cpp.*.so
+If this file is missing, the C++ extension was not built or installed correctly.
+
+Reinstall with verbosity: If the file is missing, or if you suspect a silent build failure, try reinstalling the package with increased verbosity. This might show errors from the C++ compilation process that were missed before. Make sure you are in the /home/ckj24/alphafold3/ directory (the root of the cloned repository) and your alphafold3 conda environment is activated.
+
+bash
+pip uninstall alphafold3 -y
+pip install . -v
+The -v flag provides verbose output. Look carefully for any error messages during the "Building wheel for alphafold3" or compilation steps.
+
+The most common reason for this specific ModuleNotFoundError after an apparent successful pip install . (that includes C++ extensions) is often an interfering PYTHONPATH or an issue during the C++ compilation/linking phase that wasn't immediately obvious. Starting with checking/unsetting PYTHONPATH is a good first step.
+
+Context Sources (14)
+
+Chaitanya Joshi
+The first one worked! Now I tried: $ python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline Traceback (most recent call last): File "/home/ckj24/alphafold3/run_alphafold.py", line 43, in <module> from alphafold3.data import featurisation File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/alphafold3/data/featurisation.py", line 19, in <module> from alphafold3.model import features File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/alphafold3/model/features.py", line 33, in <module> from alphafold3.model.atom_layout import atom_layout File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/alphafold3/model/atom_layout/atom_layout.py", line 21, in <module> from alphafold3.constants import chemical_component_sets File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/alphafold3/constants/chemical_component_sets.py", line 23, in <module> _CCD_SET = pickle.load(open(_CCD_SETS_CCD_PICKLE_FILE, 'rb')) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ FileNotFoundError: [Errno 2] No such file or directory: '/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/alphafold3/constants/converters/chemical_component_sets.pickle'
+
+
+Gemini
+It looks like the necessary .pickle data files (specifically chemical_component_sets.pickle and likely ccd.pickle as well) are not being included in the installed package. This often happens if the build system isn't configured to recognize and bundle these non-code files.
+
+Since your project uses scikit-build-core (defined in pyproject.toml), which often relies on setuptools for packaging Python-specific data, we can instruct setuptools to include these files.
+
+You'll need to modify your pyproject.toml to explicitly include .pickle files from the alphafold3.constants.converters directory.
+
+Here's the suggested change:
+
+pyproject.toml
+-0
++6
+[project.scripts]
+build_data = "alphafold3.build_data:build_data"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"alphafold3.constants.converters" = ["*.pickle"]
+
+Explanation of the change:
+
+[tool.setuptools]: This section is for configuring setuptools.
+include-package-data = true: This tells setuptools to respect other ways of specifying package data, like MANIFEST.in (if you were using one) and generally helps ensure data files are included.
+[tool.setuptools.package-data]: This section explicitly defines package data.
+"alphafold3.constants.converters" = ["*.pickle"]: This line tells setuptools to include all files ending with .pickle from the alphafold3/constants/converters/ directory (relative to your src directory) when building the package.
+Next Steps:
+
+Apply the changes to your pyproject.toml file.
+Reinstall the package: Navigate to your AlphaFold3 repository root (/home/ckj24/alphafold3/) in your terminal (with the alphafold3 conda environment activated) and run:
+bash
+pip uninstall alphafold3 -y
+pip install .
+Retry your command:
+bash
+python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+This should ensure that the necessary .pickle files are included in the installed alphafold3 package, resolving the FileNotFoundError.
+
+Context Sources (14)
+
+Chaitanya Joshi
+But I actually don't see an pickle file in that directory in the first place.
+
+
+Gemini
+Ah, you're right! If the .pickle files aren't in the src/alphafold3/constants/converters/ directory in your source code, then simply telling setuptools to package them won't work because there's nothing to package.
+
+These .pickle files are likely precomputed data that needs to be generated by a script. Looking at your pyproject.toml, there's a script defined:
+
+toml
+[project.scripts]
+build_data = "alphafold3.build_data:build_data"
+This build_data script is almost certainly responsible for creating these necessary .pickle files (like ccd.pickle and chemical_component_sets.pickle) and placing them into the src/alphafold3/constants/converters/ directory.
+
+Here's what you should do:
+
+Run the build_data script: Make sure your alphafold3 conda environment is activated. Navigate to the root of your AlphaFold3 repository (/home/ckj24/alphafold3/) and run:
+
+bash
+python -m alphafold3.build_data
+Or, if the script is installed as an entry point after a pip install . (even a partial one), you might be able to run:
+
+bash
+build_data
+The first command is more direct if you haven't successfully fully installed yet. This should generate the missing .pickle files in /home/ckj24/alphafold3/src/alphafold3/constants/converters/.
+
+Ensure pyproject.toml is configured to include the pickle files: Make sure your pyproject.toml includes the tool.setuptools.package-data section we discussed previously, so that pip knows to include these .pickle files when you install the package:
+
+pyproject.toml
+-0
++5
+The code change produced by Gemini cannot be automatically applied. You can manually apply the change or ask Gemini to try again.
+[project.scripts]
+build_data = "alphafold3.build_data:build_data"
++
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"alphafold3.constants.converters" = ["*.pickle"]
+
+Reinstall the package: After the build_data script has successfully run and created the .pickle files in the source tree, and you've confirmed the pyproject.toml is set up to include them, reinstall the package:
+
+bash
+cd /home/ckj24/alphafold3
+pip uninstall alphafold3 -y
+pip install .
+Retry your command:
+
+bash
+python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --output_dir=af_output/ --norun_data_pipeline
+This sequence ensures the necessary data files are first generated into the source tree, and then correctly packaged and installed into your environment.
+
+Context Sources (12)
+
+Chaitanya Joshi
+What does [project.scripts] do?
+
+
+Gemini
+The [project.scripts] section in a pyproject.toml file is used to define console scripts that should be created when your package is installed. These scripts allow users to run specific functions from your package directly from the command line.
+
+In your pyproject.toml file:
+
+toml
+[project.scripts]
+build_data = "alphafold3.build_data:build_data"
+This line means:
+
+When the alphafold3 package is installed (e.g., via pip install .), a command-line executable named build_data will be created and made available in the environment's bin directory (or Scripts on Windows).
+Running build_data from the command line will execute the build_data function found within the alphafold3.build_data Python module.
+So, it's a way to provide convenient command-line interfaces to parts of your Python package's functionality. In this case, it provides a build_data command that likely prepares or generates necessary data files for AlphaFold3.
+
+Context Sources (12)
+
+Chaitanya Joshi
+Give me code to Uninstall jax 0.6.1, jaxlib 0.6.1, jax-cuda12-pjrt 0.6.1, and jax-cuda12-plugin 0.6.1. And then Install jax 0.4.34, jaxlib 0.4.34, jax-cuda12-pjrt 0.4.34, and jax-cuda12-plugin 0.4.34. Refer to the official jax installation guide: https://docs.jax.dev/en/latest/installation.html
+
+Selected text
+: 14 lines selected
+
+Gemini
+Okay, I can help you with that! To downgrade your JAX installation to version 0.4.34 with CUDA 12 support, you can use the following pip commands.
+
+First, uninstall the existing versions:
+
+bash
+pip uninstall jax jaxlib jax-cuda12-pjrt jax-cuda12-plugin -y
+Then, install the specific versions you need. According to the pyproject.toml and the JAX installation guide, the command would be:
+
+bash
+pip install "jax[cuda12_pip]==0.4.34" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+This command tells pip to install jax version 0.4.34 along with its CUDA 12 components (jaxlib, jax-cuda12-pjrt, jax-cuda12-plugin should all be pulled in at their corresponding 0.4.34 versions) from the specified JAX release URL.
+
+Context Sources (20)
+
+Chaitanya Joshi
+I have the following errors now:
+
+(alphafold3) ckj24@dev-gpu-ckj24:~/alphafold3$ JAX_TRACEBACK_FILTERING=off python run_alphafold.py --json_path=af_input/fold_input.json --model_dir=models/ --ou tput_dir=af_output/ --norun_data_pipeline I0613 16:45:57.588312 140499230757952 xla_bridge.py:895] Unable to initialize backend 'rocm': module 'jaxlib.xla_extension' has no attribute 'GpuAllocatorConfig' I0613 16:45:57.589530 140499230757952 xla_bridge.py:895] Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+
+Running AlphaFold 3. Please note that standard AlphaFold 3 model parameters are only available under terms of use provided at https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md. If you do not agree to these terms and are using AlphaFold 3 derived model parameters, cancel execution of AlphaFold 3 inference with CTRL-C, and do not use the model parameters.
+
+Found local devices: [CudaDevice(id=0)], using device 0: cuda:0 Building model from scratch... Checking that model parameters can be loaded... 2025-06-13 16:45:57.641735: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.2 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+Running fold job 2PV7... Output will be written in af_output/2pv7_20250613_164604 since af_output/2pv7 is non-empty. Skipping data pipeline... Writing model input JSON to af_output/2pv7_20250613_164604/2pv7_data.json Predicting 3D structure for 2PV7 with 1 seed(s)... Featurising data with 1 seed(s)... Featurising data with seed 1. I0613 16:46:11.964427 140499230757952 pipeline.py:173] processing 2PV7, random_seed=1 I0613 16:46:11.991782 140499230757952 pipeline.py:266] Calculating bucket size for input with 298 tokens. I0613 16:46:11.992040 140499230757952 pipeline.py:272] Got bucket size 512 for input with 298 tokens, resulting in 214 padded tokens. Featurising data with seed 1 took 4.65 seconds. Featurising data with 1 seed(s) took 12.11 seconds. Running model inference and extracting output structure samples with 1 seed(s)... Running model inference with seed 1... E0613 16:47:00.885531 4071941 pjrt_stream_executor_client.cc:3084] Execution of replica 0 failed: INTERNAL: CustomCall failed: ptxas exited with non-zero error code 65280, output: ptxas /tmp/tempfile-dev-gpu-ckj24-64ef49ed-4071941-63775f4f7e1d8, line 5; fatal : Unsupported .version 8.4; current version is '8.2' ptxas fatal : Ptx assembly aborted due to errors
+
+Traceback (most recent call last): File "/home/ckj24/alphafold3/run_alphafold.py", line 895, in <module> app.run(main) File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/absl/app.py", line 316, in run _run_main(main, args) File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/absl/app.py", line 261, in _run_main sys.exit(main(argv)) ^^^^^^^^^^ File "/home/ckj24/alphafold3/run_alphafold.py", line 877, in main process_fold_input( File "/home/ckj24/alphafold3/run_alphafold.py", line 720, in process_fold_input all_inference_results = predict_structure( ^^^^^^^^^^^^^^^^^^ File "/home/ckj24/alphafold3/run_alphafold.py", line 473, in predict_structure result = model_runner.run_inference(example, rng_key) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/alphafold3/run_alphafold.py", line 368, in run_inference result = self._model(rng_key, featurised_example) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/traceback_util.py", line 180, in reraise_with_filtered_traceback return fun(*args, **kwargs) ^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/pjit.py", line 356, in cache_miss outs, out_flat, out_tree, args_flat, jaxpr, attrs_tracked = _python_pjit_helper( ^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/pjit.py", line 189, in _python_pjit_helper out_flat = pjit_p.bind(*args_flat, **p.params) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/core.py", line 2781, in bind return self.bind_with_trace(top_trace, args, params) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/core.py", line 442, in bind_with_trace out = trace.process_primitive(self, map(trace.full_raise, args), params) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/core.py", line 948, in process_primitive return primitive.impl(*tracers, **params) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/pjit.py", line 1764, in _pjit_call_impl return xc._xla.pjit( ^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/pjit.py", line 1739, in call_impl_cache_miss out_flat, compiled = _pjit_call_impl_python( ^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/pjit.py", line 1693, in _pjit_call_impl_python return compiled.unsafe_call(*args), compiled ^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/profiler.py", line 333, in wrapper return func(*args, **kwargs) ^^^^^^^^^^^^^^^^^^^^^ File "/home/ckj24/miniforge-pypy3/envs/alphafold3/lib/python3.11/site-packages/jax/_src/interpreters/pxla.py", line 1288, in call results = self.xla_executable.execute_sharded(input_bufs) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ jaxlib.xla_extension.XlaRuntimeError: INTERNAL: CustomCall failed: ptxas exited with non-zero error code 65280, output: ptxas /tmp/tempfile-dev-gpu-ckj24-64ef49ed-4071941-63775f4f7e1d8, line 5; fatal : Unsupported .version 8.4; current version is '8.2' ptxas fatal : Ptx assembly aborted due to errors
+
+
+Gemini
+The error message INTERNAL: CustomCall failed: ptxas exited with non-zero error code 65280, output: ptxas ... fatal : Unsupported .version 8.4; current version is '8.2' is the key here.
+
+This means:
+
+JAX (or a library it uses, like Triton) is generating PTX (NVIDIA's parallel thread execution assembly language) code that targets version 8.4 of the PTX ISA (Instruction Set Architecture).
+Your NVIDIA driver's ptxas (PTX assembler) only supports up to version 8.2 of the PTX ISA.
+This typically happens when your NVIDIA driver is older than what the installed JAX CUDA toolkit components require.
+
+PTX ISA 8.2 corresponds to CUDA Toolkit 12.2.
+PTX ISA 8.4 corresponds to CUDA Toolkit 12.4.
+Your log also shows: The NVIDIA driver's CUDA version is 12.2 which is older than the PTX compiler version 12.9.86. This confirms that JAX is trying to use features or target an architecture (PTX 8.4, associated with a CUDA 12.4+ toolkit) that your current driver (CUDA 12.2) doesn't fully support for compilation.
+
+The AlphaFold3 pyproject.toml specifies jax[cuda12]==0.4.34. This version of JAX, when using CUDA 12 plugins, is generating code that needs a newer driver. The AlphaFold3 installation documentation for Docker also mentions a host requirement of CUDA 12.6, which implies a driver version like 550.xx or newer.
+
+Recommended Solution:
+
+The most direct way to resolve this is to update your NVIDIA drivers to a version that supports PTX ISA 8.4 or newer. This generally means installing a driver compatible with CUDA Toolkit 12.4 or, ideally, CUDA 12.6 or later, to align with the AlphaFold3 documentation's hints.
+
+You can find the latest drivers for your GPU on the NVIDIA driver download page. After installing the new drivers, reboot your system and try running the AlphaFold3 command again.
+
+The XLA flags you've set (--xla_gpu_enable_triton_gemm=false, etc.) are generally good for performance on supported GPUs but don't address this underlying driver/PTX version incompatibility.
+
+Context Sources (38)
+
+Chaitanya Joshi
+What if I am stuck on Cuda 12.2 and cannot upgrade to 12.6?
+
+
+Gemini
+The core issue is a mismatch between the PTX (NVIDIA's parallel thread execution assembly language) version being generated by JAX and the PTX version supported by your NVIDIA driver.
+
+Root Cause:
+
+The JAX installation (specifically jax[cuda12]==0.4.34 and its dependencies like nvidia-cuda-nvcc-cu12 version 12.9.86) is generating PTX code targeting version 8.4. This PTX version is associated with CUDA Toolkit 12.4 features.
+Your NVIDIA driver, which corresponds to CUDA 12.2, includes a ptxas (PTX assembler) that only supports up to PTX version 8.2.
+The error Unsupported .version 8.4; current version is '8.2' clearly indicates this incompatibility.
+Recommended Solution: The most robust solution is to update your NVIDIA drivers to a version compatible with at least CUDA Toolkit 12.4 (which supports PTX 8.4). The AlphaFold 3 installation documentation even suggests that the host machine for Docker should have CUDA 12.6, implying driver versions like 550.xx or newer.
+
+If You Cannot Update Drivers: If updating your NVIDIA drivers is absolutely not possible, you are in an unsupported configuration. However, you can try the following, keeping in mind it might have performance implications or may not fully resolve all similar issues:
+
+Force XLA's native attention implementation: The error might be originating from a Triton kernel used for flash attention, which could be generating the newer PTX code. You can try to use XLA's built-in attention mechanism instead. Modify your run_alphafold.py command to include the --flash_attention_implementation=xla flag.
+
+Your command would look like this:
+
+bash
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false" # Keep this as per performance.md
+export XLA_PYTHON_CLIENT_PREALLOCATE=true
+export XLA_CLIENT_MEM_FRACTION=0.95
+python run_alphafold.py \
+    --json_path=af_input/fold_input.json \
+    --model_dir=models/ \
+    --output_dir=af_output/ \
+    --norun_data_pipeline \
+    --flash_attention_implementation=xla
+This tells AlphaFold 3 to use a more portable XLA implementation for attention, which might avoid the specific PTX 8.4 code generated by the Triton version.
+
+Caveats for the workaround:
+
+This workaround specifically targets flash attention. If other parts of the AlphaFold 3 model use custom kernels or other Triton features that also generate PTX 8.4, you might encounter similar errors.
+Using the XLA attention implementation might be slower than the optimized Triton or cuDNN flash attention kernels.
+This configuration (JAX 0.4.34 with CUDA 12.2 drivers) is not officially tested or supported by the AlphaFold 3 setup, which expects newer driver capabilities.
+Ultimately, aligning your driver version with the requirements of the software stack (JAX and its CUDA components) is the most reliable path.
+
+Context Sources (12)
+
+Chaitanya Joshi
+Okay! I am able to run the example! Can you create a ipynb notebook which has the same functionality as the run_alphafold.py script so that I can play around with the code and can specify the input as a separate cell in the notebook instead of a json file?
+
+
+Gemini
+Okay, I can help you create an IPython notebook (.ipynb) that mirrors the functionality of the run_alphafold.py script. This notebook will allow you to define inputs directly in a cell and play around with the code more interactively.
+
+Below is the content for the notebook, structured into cells. You can copy and paste each cell's content into a new cell in your Jupyter environment (like Jupyter Lab or Jupyter Notebook).
+
+python
+python
+python
+python
+python
+python
+How to use this notebook:
+
+Save: Create a new Jupyter notebook (e.g., alphafold3_interactive.ipynb) in your AlphaFold 3 cloned repository (the same directory where run_alphafold.py is).
+Copy-Paste: Copy the content of each "Cell X" block above into a separate cell in your notebook.
+Configure (Cell 3 & 4):
+In Cell 3 (Configuration Parameters), adjust paths to your databases (db_dirs_notebook), model parameters (model_dir_notebook), and desired output directory (output_dir_notebook). Also, set flags like run_data_pipeline_notebook and run_inference_notebook as needed.
+In Cell 4 (Input Definition), modify the input_dict to define the biomolecular system you want to predict. You can also provide a user_ccd_string_notebook if you have custom ligands not in the standard CCD.
+Environment (Cell 2): Ensure your XLA_FLAGS are correctly set for your GPU before running the notebook, or set them using os.environ in Cell 2 and then restart the kernel for JAX to pick them up.
+Run Cells: Execute the cells sequentially.
+This notebook structure allows you to:
+
+Easily change input parameters and the molecular system definition.
+Step through the configuration and execution.
+Inspect intermediate variables if you add print statements or debugging code.
+Choose whether to run the data pipeline, inference, or both.
+Context Sources (26)
